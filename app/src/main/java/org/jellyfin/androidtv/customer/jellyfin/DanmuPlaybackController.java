@@ -72,8 +72,11 @@ public class DanmuPlaybackController extends PlaybackController {
         mDanmakuView.showFPS(customerUserPreferences.isDanmuFps());
         mDanmaKuShow = customerUserPreferences.isDanmuController();
         this.danmuApi = KoinJavaComponent.get(DanmuApi.class);
+        
+        // 启用播放器时间同步
+        DanmakuTimer.useOrigin = true;
+        
         initDanmaku();
-//        DanmakuTimer.useOrigin = true;
     }
 
     @Override
@@ -94,6 +97,9 @@ public class DanmuPlaybackController extends PlaybackController {
     @Override
     public void pause() {
         super.pause();
+        if (hasInitializedVideoManager()) {
+            mVideoManager.stopDanmakuTimeSync();
+        }
         danmakuOnPause();
     }
 
@@ -101,6 +107,9 @@ public class DanmuPlaybackController extends PlaybackController {
     public void play(long position) {
         boolean resume = mPlaybackState == PlaybackState.PAUSED;
         super.play(position);
+        if (hasInitializedVideoManager()) {
+            mVideoManager.startDanmakuTimeSync();
+        }
         if (resume) {
             resume();
         }
@@ -113,6 +122,9 @@ public class DanmuPlaybackController extends PlaybackController {
     @Override
     public void stop() {
         super.stop();
+        if (hasInitializedVideoManager()) {
+            mVideoManager.stopDanmakuTimeSync();
+        }
         releaseDanmaku(this);
     }
 
@@ -374,10 +386,11 @@ public class DanmuPlaybackController extends PlaybackController {
     @Override
     protected void refreshCurrentPosition() {
         super.refreshCurrentPosition();
+        // 仍然更新videoTime，作为备份同步机制
         DanmakuTimer.videoTime = mCurrentPosition;
+        
         if (customerUserPreferences.isDanmuFps()) {
             long currentTime = getDanmakuView().getCurrentTime();
-
             Timber.d("当前弹幕时间: 视频=%d, 弹幕=%d, 时间差=%d", mCurrentPosition, currentTime, (currentTime - mCurrentPosition));
         }
     }
