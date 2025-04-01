@@ -109,6 +109,14 @@ public class DanmuPlaybackController extends PlaybackController {
         super.play(position);
         if (hasInitializedVideoManager()) {
             mVideoManager.startDanmakuTimeSync();
+
+            // 如果弹幕视图已准备好但暂停，就恢复它
+            if (getDanmakuView() != null && getDanmakuView().isPrepared() && getDanmakuView().isPaused()) {
+                danmakuOnResume();
+            } else if (getDanmakuView() != null && !getDanmakuView().isPrepared()) {
+                // 如果弹幕视图还未准备好，确保初始化
+                onPrepareDanmaku(this, getCurrentlyPlayingItem());
+            }
         }
         if (resume) {
             resume();
