@@ -57,6 +57,8 @@ import java.util.Optional;
 
 import timber.log.Timber;
 
+import android.view.Choreographer;
+
 @OptIn(markerClass = UnstableApi.class)
 public class VideoManager {
     private ZoomMode mZoomMode;
@@ -82,11 +84,21 @@ public class VideoManager {
         @Override
         public void run() {
             if (mExoPlayer != null && isPlaying()) {
-                DanmakuTimer.videoTime = mExoPlayer.getCurrentPosition();
+                long currentPosition = mExoPlayer.getCurrentPosition();
+                // 只有当时间变化超过阈值时才更新，减少不必要的赋值操作
+                if (Math.abs(currentPosition - lastVideoTimeUpdate) >= MIN_UPDATE_INTERVAL_MS) {
+                    DanmakuTimer.videoTime = currentPosition;
+                    lastVideoTimeUpdate = currentPosition;
+                }
             }
             mHandler.postDelayed(this, 16); // 大约60fps的更新频率
         }
     };
+    
+    // 添加Choreographer.FrameCallback实现
+    private Choreographer.FrameCallback danmakuFrameCallback;
+    private long lastVideoTimeUpdate = -1;
+    private static final long MIN_UPDATE_INTERVAL_MS = 8; // 最小更新间隔，避免过于频繁的更新
 
     public VideoManager(@NonNull Activity activity, @NonNull View view, @NonNull PlaybackOverlayFragmentHelper helper) {
         mActivity = activity;
@@ -663,11 +675,39 @@ public class VideoManager {
     }
 
     public void startDanmakuTimeSync() {
-        mHandler.removeCallbacks(danmakuTimeUpdateTask);
-        mHandler.post(danmakuTimeUpdateTask);
+        // 停止可能存在的旧同步任务
+        stopDanmakuTimeSync();
+        
+        // 使用Choreographer.FrameCallback替代Handler.postDelayed，更好地与系统帧率同步
+        if (danmakuFrameCallback == null) {
+            danmakuFrameCallback = new Choreographer.FrameCallback() {
+                @Override
+                public void doFrame(long frameTimeNanos) {
+                    if (mExoPlayer != null && isPlaying()) {
+                        long currentPosition = mExoPlayer.getCurrentPosition();
+                        // 只有当时间变化超过阈值时才更新，减少不必要的赋值操作
+                        if (Math.abs(currentPosition - lastVideoTimeUpdate) >= MIN_UPDATE_INTERVAL_MS) {
+                            DanmakuTimer.videoTime = currentPosition;
+                            lastVideoTimeUpdate = currentPosition;
+                        }
+                    }
+                    // 注册下一帧回调
+                    Choreographer.getInstance().postFrameCallback(this);
+                }
+            };
+        }
+        
+        // 启动帧回调
+        Choreographer.getInstance().postFrameCallback(danmakuFrameCallback);
     }
-
+    
     public void stopDanmakuTimeSync() {
+        // 移除Handler回调（兼容旧代码）
         mHandler.removeCallbacks(danmakuTimeUpdateTask);
+        
+        // 移除Choreographer帧回调
+        if (danmakuFrameCallback != null) {
+            Choreographer.getInstance().removeFrameCallback(danmakuFrameCallback);
+        }
     }
 }
